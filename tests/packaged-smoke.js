@@ -9,26 +9,34 @@ const { spawn } = require('node:child_process');
 (async () => {
   const root = path.resolve(__dirname, '..');
   const nsis = process.argv.includes('--nsis');
+  const upgradeIndex = process.argv.indexOf('--upgrade-from');
+  const upgradeFrom = upgradeIndex < 0 ? null : process.argv[upgradeIndex + 1];
+  if (upgradeIndex >= 0 && (!nsis || !upgradeFrom || upgradeFrom.startsWith('--'))) {
+    throw new Error('--upgrade-from 需要与 --nsis 一起使用，并指定旧安装包路径。');
+  }
+  const oldVersion = upgradeFrom && path.basename(upgradeFrom).match(/^SuixinTodo-Setup-(.+)-x64\.exe$/)?.[1];
+  if (upgradeFrom && !oldVersion) throw new Error('旧安装包文件名应包含版本：SuixinTodo-Setup-版本-x64.exe');
   const version = require('../package.json').version;
   const installer = path.join(root, 'dist', `SuixinTodo-Setup-${version}-x64.exe`);
   const results = path.join(root, 'test-results');
   fs.mkdirSync(results, { recursive: true });
-  const directory = fs.mkdtempSync(path.join(results, nsis ? 'suixin-nsis-' : 'suixin-packaged-'));
+  const directory = fs.mkdtempSync(path.join(results, upgradeFrom ? 'suixin-upgrade-' : nsis ? 'suixin-nsis-' : 'suixin-packaged-'));
   const userData = path.join(directory, 'profile');
   const installDirectory = path.join(directory, 'installed');
   const executablePath = nsis ? path.join(installDirectory, '随心待办.exe')
     : path.join(root, 'dist', 'win-unpacked', '随心待办.exe');
   const env = { ...process.env, SUIXIN_E2E: '1', SUIXIN_TEST_DATA: userData };
   delete env.ELECTRON_RUN_AS_NODE;
-  const report = { mode: nsis ? 'NSIS' : 'win-unpacked', directory, executablePath, userData,
+  const report = { mode: upgradeFrom ? 'NSIS-upgrade' : nsis ? 'NSIS' : 'win-unpacked', directory, executablePath, userData,
+    fromVersion: oldVersion || version, toVersion: version, launches: [],
     logoff: '未验证', systemReboot: '未验证', physicalTrayClick: '未验证', checkpoints: [] };
   let desktop, page;
 
-  async function install() {
-    if (!fs.existsSync(installer)) throw new Error(`请先构建安装包：${installer}`);
+  async function install(source = installer) {
+    if (!fs.existsSync(source)) throw new Error(`请先构建安装包：${source}`);
     await new Promise((resolve, reject) => {
       // NSIS requires /D last. Pass arguments without a shell.
-      const child = spawn(installer, ['/S', '/CURRENTUSER', `/D=${installDirectory}`], { env, windowsHide: true, stdio: 'ignore' });
+      const child = spawn(path.resolve(source), ['/S', '/CURRENTUSER', `/D=${installDirectory}`], { env, windowsHide: true, stdio: 'ignore' });
       const timer = setTimeout(() => reject(new Error('安装超过 120 秒；保留现场，请检查安装进程。')), 120000);
       child.once('error', error => { clearTimeout(timer); reject(error); });
       child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`NSIS exit ${code}`)); });
@@ -39,7 +47,7 @@ const { spawn } = require('node:child_process');
     await page.locator('#menu-button').click();
     await page.locator('#app-menu').getByRole(label === '始终置顶' ? 'menuitemcheckbox' : 'menuitem', { name: label, exact: true }).click();
   }
-  async function launch() {
+  async function launch(expectedVersion = version) {
     desktop = await electron.launch({ executablePath, env, timeout: 30000 });
     page = await desktop.firstWindow();
     await expect(page.locator('#project-heading')).not.toHaveText('正在打开清单…');
@@ -50,11 +58,13 @@ const { spawn } = require('node:child_process');
         preferences: { nodeIntegration: prefs.nodeIntegration, sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation } };
     });
     expect(runtime.packaged).toBe(true);
+    expect(runtime.version).toBe(expectedVersion);
     expect(runtime.exe.toLowerCase()).toBe(executablePath.toLowerCase());
     expect(runtime.userData).toBe(userData);
     expect(runtime.testHook).toBe('undefined');
     expect(runtime.preferences).toEqual({ nodeIntegration: false, sandbox: true, contextIsolation: true });
     report.runtime = runtime;
+    report.launches.push(runtime);
     // Capture the real tray menu on its next rebuild. Instrumentation exists
     // only in Playwright's main-process debugger; no packaged test hook needed.
     await desktop.evaluate(({ Menu }) => {
@@ -95,8 +105,8 @@ const { spawn } = require('node:child_process');
     return state;
   }
   try {
-    if (nsis) await install();
-    await launch();
+    if (nsis) await install(upgradeFrom || installer);
+    await launch(oldVersion || version);
     await expect(page.locator('.project-tab')).toHaveCount(0);
     await expect(page.locator('#task-input')).toBeDisabled();
     await expect(page.locator('.project-bar > #new-project-button')).toBeVisible();
@@ -121,7 +131,7 @@ const { spawn } = require('node:child_process');
     expect(fs.statSync(path.join(userData, 'data.json')).mtimeMs).toBeGreaterThan(initialModified);
     await page.locator('#close-button').click();
     await expect.poll(() => desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(false);
-    await quitFromTray(); await launch();
+    await quitFromTray(); await launch(oldVersion || version);
     const reopened = await checkpoint('after-relaunch');
     expect(reopened.projects).toEqual(before.projects);
     expect(reopened.selectedProjectId).toBe(before.selectedProjectId);
@@ -137,14 +147,23 @@ const { spawn } = require('node:child_process');
     await page.getByRole('button', { name: '项目 B', exact: true }).click();
     await quitFromTray();
     if (nsis) {
-      const bytes = fs.readFileSync(path.join(userData, 'data.json'));
+      // Preserve a pre-import archive as well as the primary/rotating backup.
+      fs.copyFileSync(path.join(userData, 'data.json'), path.join(userData, 'before-import.json'), fs.constants.COPYFILE_EXCL);
+      const archives = ['data.json', 'data.json.bak', 'before-import.json'].map(name => [name, fs.readFileSync(path.join(userData, name))]);
       await install();
-      expect(fs.readFileSync(path.join(userData, 'data.json'))).toEqual(bytes);
+      for (const [name, bytes] of archives) expect(fs.readFileSync(path.join(userData, name))).toEqual(bytes);
       await launch();
-      const upgraded = await checkpoint('after-overwrite-install');
+      const upgraded = await checkpoint(upgradeFrom ? 'after-version-upgrade' : 'after-overwrite-install');
       expect(upgraded.projects).toEqual(before.projects);
       expect(upgraded.selectedProjectId).toBe(before.selectedProjectId);
-      report.overwriteInstall = 'passed (same-version reinstall)';
+      report.overwriteInstall = upgradeFrom ? `passed (${oldVersion} -> ${version})` : 'passed (same-version reinstall)';
+      report.archivesUnchangedDuringInstall = archives.map(([name]) => name);
+      if (upgradeFrom) {
+        await quitFromTray(); await launch();
+        const restarted = await checkpoint('after-upgrade-relaunch');
+        expect(restarted.projects).toEqual(before.projects);
+        expect(restarted.selectedProjectId).toBe(before.selectedProjectId);
+      }
     } else await launch();
     await page.screenshot({ path: path.join(directory, 'packaged.png') });
     await quitFromTray(); report.result = 'passed';
@@ -152,7 +171,7 @@ const { spawn } = require('node:child_process');
     report.result = 'failed'; report.error = error.stack; throw error;
   } finally {
     if (desktop) await desktop.close().catch(() => {});
-    fs.writeFileSync(path.join(results, nsis ? 'nsis-smoke.json' : 'packaged-smoke.json'), JSON.stringify(report, null, 2));
+    fs.writeFileSync(path.join(results, upgradeFrom ? 'upgrade-smoke.json' : nsis ? 'nsis-smoke.json' : 'packaged-smoke.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

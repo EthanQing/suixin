@@ -6,13 +6,21 @@
 
 ## 直接使用
 
-- `dist/SuixinTodo-Portable-1.0.0-x64.exe`：免安装，双击启动。
-- `dist/SuixinTodo-Setup-1.0.0-x64.exe`：安装版，可选择安装位置，创建桌面和开始菜单快捷方式。
+- `dist/SuixinTodo-Portable-1.1.0-x64.exe`：免安装，双击启动。
+- `dist/SuixinTodo-Setup-1.1.0-x64.exe`：安装版及已有安装的更新包，可选择安装位置，创建桌面和开始菜单快捷方式。
 - `dist/win-unpacked/随心待办.exe`：已解包的程序，必须与同目录其他文件一起保留。
 
 目标平台：Windows 10 / Windows 11，x64。运行已打包程序不需要 Node.js，也不需要联网。安装依赖和首次打包时需要联网下载开发工具。
 
 发行文件没有商业代码签名。项目包含完整源码和锁定依赖，可自行构建。
+
+### 从 1.0.0 更新到 1.1.0，保留已有计划
+
+1. 在现有软件中导出一次 JSON 备份留存，然后从托盘选择“退出程序”。不要先卸载。
+2. 在原来的 Windows 账户运行 `SuixinTodo-Setup-1.1.0-x64.exe`，沿用原安装方式和目录完成升级。
+3. 打开随心，继续使用原有计划，不需要重新导入或创建项目。程序更新文件，存档继续使用 `%APPDATA%\SuixinTodo\data.json`。
+
+应用标识、目录名和 JSON version 保持一致。旧 1.0.0 安装包仍保留，新 1.1.0 包使用独立文件名。升级不是导入 JSON，不会替换清单；请勿用示例 JSON 导入覆盖自己的计划。若升级后显示空白，先退出并保留原件，核对旧版“打开数据目录”的路径和 Windows 账户，再按本文恢复方法处理。
 
 ## 操作
 
@@ -91,7 +99,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\make-icons.ps1
 %APPDATA%\SuixinTodo\data.json
 ```
 
-`··· → 打开数据目录` 或托盘同名菜单通过 Electron Shell 打开实际运行时目录；“打开数据目录”菜单项的悬浮提示也显示数据文件路径。数据不写入安装目录、app.asar 或 portable 解压目录，NSIS 配置为卸载保留数据。本次已验证同版本覆盖安装；注销、系统重启和跨版本升级尚未实测。
+`··· → 打开数据目录` 或托盘同名菜单通过 Electron Shell 打开实际运行时目录；“打开数据目录”菜单项的悬浮提示也显示数据文件路径。数据不写入安装目录、app.asar 或 portable 解压目录，NSIS 配置为卸载保留数据。已验证同版本重装及真实 1.0.0 → 1.1.0 升级；注销和系统重启尚未实测。
 
 开发版、win-unpacked、NSIS 与 portable 默认共用当前 Windows 用户的上述目录。同一用户重复启动由单实例锁处理；切换 Windows 用户或用另一账户运行时会使用那个账户的 APPDATA，不会自动跨用户复制。没有变更 appId、目录名、文件名或 JSON version。
 
@@ -178,9 +186,17 @@ Electron 测试直接驱动本机桌面进程，不需要另装浏览器。测�
 
 `test:nsis` 会真实静默安装（注册应用并创建快捷方式）到 `test-results/suixin-nsis-*/installed`，重开安装后的 EXE，再执行同版本覆盖安装。建议在专用测试机或 VM 运行；不要与正在运行的正式版同时操作。测试 profile、各检查点 JSON、时间和截图全部保留在对应目录，失败也不清理，汇总为 `test-results/nsis-smoke.json`。测试不会卸载或删除任何用户数据。
 
+跨版本升级测试（先保留旧安装包，再构建当前版本）：
+
+```powershell
+npm.cmd run test:nsis -- --upgrade-from dist/SuixinTodo-Setup-1.0.0-x64.exe
+```
+
+先用旧安装版创建计划并退出重开，再安装当前版本，断言运行版本已更新、数据目录一致，data.json、.bak、before-import.json 在安装期间字节不变，升级后重开两次仍保持完整项目、任务、子任务和选择。证据另存 `test-results/upgrade-smoke.json` 和 `test-results/suixin-upgrade-*/`。
+
 手工完整安装验收：
 
-1. 在专用 Windows 测试账户或 VM 中安装 `dist/SuixinTodo-Setup-1.0.0-x64.exe`，运行安装目录的 EXE。用“打开数据目录”记录实际路径，应该是该账户 `%APPDATA%\SuixinTodo`；初次为空白。
+1. 在专用 Windows 测试账户或 VM 中安装 `dist/SuixinTodo-Setup-1.1.0-x64.exe`，运行安装目录的 EXE。用“打开数据目录”记录实际路径，应该是该账户 `%APPDATA%\SuixinTodo`；初次为空白。
 2. 顶部 `+` 创建项目 A，底部 `+` 添加“安装版持久化测试-123”和第二条任务，勾选第一条；创建项目 B 并添加任务，保持 B 选中。
 3. 打开 `data.json`（只读），记录更新时间，确认项目、文本、completed、selectedProjectId 与界面一致，复制整个目录留证。
 4. 托盘右键“退出程序”，在任务管理器确认进程结束。重开安装后的 EXE，检查 A、B、全部任务、完成和选择状态。

@@ -1,5 +1,26 @@
 # SuixinTodo 测试报告
 
+## 最新：1.1.0 保留数据的更新包（2026-10-23）
+
+新增 `dist/SuixinTodo-Setup-1.1.0-x64.exe` 和 portable 1.1.0，原有 1.0.0 安装包与 portable 文件均保留，构建前后 SHA-256 一致。仅更新 package.json / package-lock.json 版本号；appId、产品名、数据目录、文件名、JSON version、NSIS 卸载保留数据配置及运行时存储代码均未变。
+
+实际执行命令：`npm.cmd run test:nsis -- --upgrade-from dist/SuixinTodo-Setup-1.0.0-x64.exe`。使用本机保留的真实 1.0.0 NSIS 包安装，创建两个项目、三条主任务、两条子任务（完成一条，父任务 1/2 且折叠），退出并重开旧安装版，再执行真实 1.1.0 安装器升级，未手动卸载或重新导入。
+
+| 检查 | 结果 |
+| --- | --- |
+| 实际运行版本 | 1.0.0、1.0.0、1.1.0、1.1.0，逐次断言通过 |
+| 安装目录和实际 userData | 升级前后相同，测试 profile 在唯一隔离目录 |
+| 主文件、.bak、before-import.json | 安装器运行前后逐字节一致 |
+| 项目与任务完整数组 | 包括子任务、ID、完成、顺序、expanded，升级后完整一致 |
+| 最后选择 | 仍为项目 B |
+| 升级后退出再启动 | 仍为 1.1.0，完整数据一致 |
+| 存储单元回归 | 22/22 通过 |
+| Windows 构建与语法检查 | 通过 |
+
+证据：`test-results/upgrade-smoke.json`，最终现场 `test-results/suixin-upgrade-Ypxg64/`；四份检查点 JSON、实际 EXE、profile 和截图均保留。最终检查点北京时间约 11:35:20 至 11:35:30。用户数据没有导入到测试 profile；额外复制了本机预期 APPDATA 中原主文件及 .bak 到已被 Git 忽略的 `test-results/user-data-backup-Qcv3Lr/`，通过 SHA-256 核对，升级测试后原文件未改变。个人存档不提交到 Git。
+
+本次只制作更新包并在隔离目录验收，没有替用户运行真实用户目录上的升级。升级指引：旧程序导出备份后从托盘退出，直接运行 1.1.0 安装包，沿用同一 Windows 账户、安装方式与目录；无需先卸载，也无需重新导入计划。旧存档继续从 `%APPDATA%\SuixinTodo\data.json` 读取。系统注销、重启仍未实测。此前 13/13 E2E 的产品代码未变，本轮重点执行真实跨版本升级和存储回归。
+
 ## 补充：移除底部提示语（2026-10-23）
 
 同步已合并的 PR #1 到子任务分支，移除底部文案与残留小窗样式；修复 renderer 仍访问已删除 `.footnote` 导致启动错误的问题，数据文件路径悬浮提示转移到“打开数据目录”菜单项。语法检查、完整 Electron E2E **13/13** 与打包 EXE 持久化检查通过；截图已更新并目视确认底部仅保留输入区域。未修改存储逻辑，本轮不重复单元和 NSIS 安装流程。打包检查现场为 `test-results/suixin-packaged-LdJzjN/`。
