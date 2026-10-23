@@ -116,6 +116,8 @@ test('空白首次启动、顶部加号键盘操作及溢出固定可见；删�
 test('写盘失败显示错误且保留输入与原文件；打开数据目录使用实际路径', async () => {
   await createProject('写入失败测试');
   const file = path.join(directory, 'data.json');
+  await expect(page.locator('#status')).toBeHidden();
+  await expect(page.locator('#data-directory-button')).toHaveAttribute('title', `本地保存：${file}`);
   const before = fs.readFileSync(file, 'utf8');
   fs.mkdirSync(`${file}.tmp`);
   await add('保存失败应保留');

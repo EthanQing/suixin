@@ -91,7 +91,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\make-icons.ps1
 %APPDATA%\SuixinTodo\data.json
 ```
 
-`··· → 打开数据目录` 或托盘同名菜单通过 Electron Shell 打开实际运行时目录；底部说明的悬浮提示也显示数据文件路径。数据不写入安装目录、app.asar 或 portable 解压目录，NSIS 配置为卸载保留数据。本次已验证同版本覆盖安装；注销、系统重启和跨版本升级尚未实测。
+`··· → 打开数据目录` 或托盘同名菜单通过 Electron Shell 打开实际运行时目录；“打开数据目录”菜单项的悬浮提示也显示数据文件路径。数据不写入安装目录、app.asar 或 portable 解压目录，NSIS 配置为卸载保留数据。本次已验证同版本覆盖安装；注销、系统重启和跨版本升级尚未实测。
 
 开发版、win-unpacked、NSIS 与 portable 默认共用当前 Windows 用户的上述目录。同一用户重复启动由单实例锁处理；切换 Windows 用户或用另一账户运行时会使用那个账户的 APPDATA，不会自动跨用户复制。没有变更 appId、目录名、文件名或 JSON version。
 

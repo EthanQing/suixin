@@ -110,4 +110,4 @@ dialog label { display: block; color: #777; font-size: 12px; margin-bottom: 7px;
 .project-management-row .icon-button { width: 23px; height: 25px; font-size: 14px; }
 .wide-button { width: 100%; margin-top: 12px; }
 @media (hover: none) { .task-actions { opacity: 1; } }
-@media (max-height: 330px) { main { padding-top: 8px; } .footnote { margin-top: 6px; } .project-tabs { padding-bottom: 10px; } dialog { padding: 16px; } }
+@media (max-height: 330px) { main { padding-top: 8px; } .project-tabs { padding-bottom: 10px; } dialog { padding: 16px; } }

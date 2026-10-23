@@ -454,7 +454,7 @@ window.todo.onError(message => notify(message, true));
 run(async () => {
   const result = await window.todo.load(); state = result.state;
   render();
-  document.querySelector('.footnote').title = `本地保存：${result.dataFile}`;
+  $('data-directory-button').title = `本地保存：${result.dataFile}`;
   if (result.notice) notify(result.notice, true);
   (state.projects.length ? $('task-input') : $('new-project-button')).focus();
 });
