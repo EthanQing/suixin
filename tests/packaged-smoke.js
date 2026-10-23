@@ -106,6 +106,16 @@ const { spawn } = require('node:child_process');
     await task('安装版持久化测试-123'); await task('项目 A 第二条');
     await page.locator('.task-check').first().check();
     await expect(page.locator('.task-row').first()).toHaveClass(/completed/);
+    await page.locator('[data-action="add-subtask"]').first().click();
+    for (const text of ['安装版子任务一', '安装版子任务二']) {
+      await page.locator('.subtask-input').fill(text); await page.locator('.subtask-input').press('Enter');
+      await expect(page.getByText(text, { exact: true })).toBeVisible();
+      await expect(page.locator('.subtask-input')).toHaveValue('');
+    }
+    await page.locator('.subtask-input').press('Escape');
+    await page.locator('.subtask-row .task-check').first().check();
+    await expect(page.locator('.subtask-count')).toHaveText('1/2');
+    await page.locator('.expand-task').click();
     await project('项目 B'); await task('项目 B 独立任务');
     const before = await checkpoint('before-exit');
     expect(fs.statSync(path.join(userData, 'data.json')).mtimeMs).toBeGreaterThan(initialModified);
@@ -116,8 +126,14 @@ const { spawn } = require('node:child_process');
     expect(reopened.projects).toEqual(before.projects);
     expect(reopened.selectedProjectId).toBe(before.selectedProjectId);
     await page.getByRole('button', { name: '项目 A', exact: true }).click();
-    await expect(page.locator('.task-check').first()).toBeChecked();
+    await expect(page.locator('.task-check').first()).not.toBeChecked();
+    await expect(page.locator('.subtask-count')).toHaveText('1/2');
+    await expect(page.locator('.subtask-row')).toHaveCount(0);
     await expect(page.locator('.task-row')).toHaveCount(2);
+    await page.locator('.expand-task').click();
+    await expect(page.locator('.subtask-row .task-check').first()).toBeChecked();
+    await expect(page.locator('.subtask-row .task-check').last()).not.toBeChecked();
+    await page.locator('.expand-task').click();
     await page.getByRole('button', { name: '项目 B', exact: true }).click();
     await quitFromTray();
     if (nsis) {

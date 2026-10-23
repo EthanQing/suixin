@@ -218,3 +218,156 @@ test('大小上限按实际写入的格式化 JSON 计算，不会保存下次�
   assert.deepEqual(store.snapshot(), before);
   assert.deepEqual(readBackup(store.file), before);
 });
+
+function parentFixture(t) {
+  const fixtureData = fixture(t, false);
+  const { store } = fixtureData;
+  store.dispatch({ type: 'project:add', name: '子任务测试' });
+  const projectId = store.state.selectedProjectId;
+  store.dispatch({ type: 'task:add', projectId, text: '分阶段计划' });
+  const taskId = store.state.projects[0].tasks[0].id;
+  const act = (type, extra = {}) => {
+    const state = store.dispatch({ type, projectId, taskId, ...extra });
+    assert.deepEqual(readBackup(store.file), state); // Every acknowledged change is on disk.
+    return state.projects[0].tasks[0];
+  };
+  return { ...fixtureData, projectId, taskId, act };
+}
+
+test('子任务独立 ID、完成顺序和父状态由 Store 计算，完成后新增恢复未完成', t => {
+  const { act, store, taskId, projectId, directory } = parentFixture(t);
+  act('task:toggle');
+  let parent = act('subtask:add', { text: '第一阶段' });
+  assert.equal(parent.completed, false); assert.equal(parent.expanded, true);
+  for (let i = 2; i <= 4; i++) parent = act('subtask:add', { text: `第${i}阶段` });
+  const ids = parent.subtasks.map(item => item.id);
+  assert.equal(new Set([taskId, ...ids]).size, 5);
+  for (const subtaskId of ids.slice(0, 2)) parent = act('subtask:toggle', { subtaskId });
+  assert.equal(parent.subtasks.filter(item => item.completed).length, 2);
+  assert.equal(parent.completed, false);
+  const before = store.snapshot();
+  assert.throws(() => store.dispatch({ type: 'task:toggle', projectId, taskId }), /不能手动/);
+  assert.deepEqual(store.snapshot(), before);
+  for (const subtaskId of ids.slice(2)) parent = act('subtask:toggle', { subtaskId });
+  assert.equal(parent.completed, true);
+  parent = act('subtask:edit', { subtaskId: ids[0], text: '改名仍然完成' });
+  assert.equal(parent.subtasks[0].completed, true);
+  parent = act('subtask:toggle', { subtaskId: ids[1] });
+  assert.equal(parent.completed, false);
+  assert.deepEqual(parent.subtasks.map(item => item.id), ids);
+  act('subtask:toggle', { subtaskId: ids[1] });
+  parent = act('subtask:add', { text: '新增阶段' });
+  assert.equal(parent.completed, false);
+  act('task:expand', { expanded: false });
+  assert.deepEqual(new Store(directory).snapshot(), store.snapshot());
+});
+
+test('删除子任务立即重算；删除最后一个保留之前完成状态，普通任务恢复手动勾选', t => {
+  for (const completed of [false, true]) {
+    const { act } = parentFixture(t);
+    let parent = act('subtask:add', { text: '保留状态' });
+    const firstId = parent.subtasks[0].id;
+    act('subtask:toggle', { subtaskId: firstId });
+    parent = act('subtask:add', { text: '删除未完成阶段' });
+    parent = act('subtask:delete', { subtaskId: parent.subtasks[1].id });
+    assert.equal(parent.completed, true);
+    if (!completed) act('subtask:toggle', { subtaskId: firstId });
+    parent = act('subtask:delete', { subtaskId: firstId });
+    assert.equal(parent.completed, completed);
+    assert.equal(Object.hasOwn(parent, 'subtasks'), false);
+    assert.equal(Object.hasOwn(parent, 'expanded'), false);
+    assert.equal(act('task:toggle').completed, !completed);
+  }
+});
+
+test('旧任务无损读取；导入纠正父任务状态，空子任务列表仍保留普通任务原状态', t => {
+  const { store } = fixture(t);
+  const old = store.snapshot();
+  assert.deepEqual(validate(old), old);
+  const input = structuredClone(old);
+  input.projects[0].tasks[0].subtasks = [{ id: 'child-one', text: '已完成', completed: true }];
+  input.projects[0].tasks[0].completed = false;
+  input.projects[0].tasks[1].subtasks = [];
+  input.projects[0].tasks[1].completed = true;
+  const imported = store.replace(input);
+  assert.equal(imported.projects[0].tasks[0].completed, true);
+  assert.equal(imported.projects[0].tasks[1].completed, true);
+  assert.deepEqual(imported.projects[0].tasks[2], old.projects[0].tasks[2]);
+});
+
+test('拒绝嵌套、跨层重复 ID、非法子任务类型及展开状态；原数据不变', t => {
+  const { store, act, taskId } = parentFixture(t);
+  act('subtask:add', { text: '有效子任务' });
+  const before = store.snapshot();
+  for (const change of [
+    task => { task.subtasks = null; },
+    task => { task.subtasks[0].subtasks = []; },
+    task => { task.subtasks[0].id = taskId; },
+    task => { task.subtasks.push(structuredClone(task.subtasks[0])); },
+    task => { task.subtasks[0].completed = 'true'; },
+    task => { task.subtasks[0].text = '  '; },
+    task => { task.expanded = 'false'; }
+  ]) {
+    const input = structuredClone(before); change(input.projects[0].tasks[0]);
+    assert.throws(() => store.replace(input));
+    assert.deepEqual(store.snapshot(), before);
+    assert.deepEqual(readBackup(store.file), before);
+  }
+  assert.throws(() => act('subtask:add', { text: '  ' }));
+  assert.throws(() => act('subtask:toggle', { subtaskId: 'missing' }));
+});
+
+test('子任务导出、导入及 .bak 恢复完整保留，删除父任务连同子任务删除', t => {
+  const { store, directory, act, projectId, taskId } = parentFixture(t);
+  let parent = act('subtask:add', { text: '备份子任务' });
+  act('subtask:toggle', { subtaskId: parent.subtasks[0].id });
+  act('task:expand', { expanded: false });
+  const expected = store.snapshot();
+  const exported = path.join(directory, 'export-subtasks.json');
+  atomicWrite(exported, expected);
+  store.dispatch({ type: 'task:delete', projectId, taskId });
+  assert.equal(store.state.projects[0].tasks.length, 0);
+  store.replace(readBackup(exported));
+  assert.deepEqual(store.snapshot(), expected);
+  store.setWindow({ width: expected.window.width }); // Rotate full tree to .bak.
+  fs.writeFileSync(store.file, 'broken');
+  assert.deepEqual(new Store(directory).snapshot(), expected);
+});
+
+test('子任务写入失败不提交任何内存或磁盘变化', t => {
+  const { store, act } = parentFixture(t);
+  const parent = act('subtask:add', { text: '保持未完成' });
+  const before = store.snapshot(), bytes = fs.readFileSync(store.file);
+  fs.mkdirSync(`${store.file}.tmp`);
+  for (const [type, extra] of [
+    ['subtask:add', { text: '不能保存' }], ['subtask:edit', { text: '不能改名' }],
+    ['subtask:toggle', {}], ['subtask:delete', {}], ['task:expand', { expanded: false }]
+  ]) {
+    assert.throws(() => act(type, { subtaskId: parent.subtasks[0].id, ...extra }));
+    assert.deepEqual(store.snapshot(), before);
+    assert.deepEqual(fs.readFileSync(store.file), bytes);
+  }
+});
+
+test('Windows 临时文件占用可重试，持续失败不删除或覆盖有效原文件', { skip: process.platform !== 'win32' }, t => {
+  const { store, act } = parentFixture(t);
+  const originalRename = fs.renameSync;
+  let attempts = 0;
+  fs.renameSync = (...args) => {
+    if (args[1] === store.file && ++attempts < 3) throw Object.assign(new Error('temporary sharing denial'), { code: 'EPERM' });
+    return originalRename(...args);
+  };
+  try { act('subtask:add', { text: '重试后保存' }); }
+  finally { fs.renameSync = originalRename; }
+  assert.equal(attempts, 3);
+  const before = store.snapshot(), bytes = fs.readFileSync(store.file);
+  attempts = 0;
+  fs.renameSync = (...args) => {
+    if (args[1] === store.file) { attempts++; throw Object.assign(new Error('persistent denial'), { code: 'EPERM' }); }
+    return originalRename(...args);
+  };
+  try { assert.throws(() => act('subtask:add', { text: '失败不提交' }), /persistent denial/); }
+  finally { fs.renameSync = originalRename; }
+  assert.equal(attempts, 4);
+  assert.deepEqual(store.snapshot(), before); assert.deepEqual(fs.readFileSync(store.file), bytes);
+});

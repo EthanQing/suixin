@@ -50,6 +50,21 @@ ul { padding: 0; margin: 0; list-style: none; }
 .task-actions { display: flex; align-items: center; gap: 1px; opacity: 0; flex-shrink: 0; }
 .task-row:hover .task-actions, .task-row:focus-within .task-actions { opacity: 1; }
 .task-actions button { width: 23px; height: 23px; }
+.parent-row { gap: 6px; }
+.task-check:disabled { cursor: default; }
+.task-title { padding: 0; border: 0; background: none; font: inherit; text-align: left; color: inherit; }
+.expand-task { width: 14px; height: 22px; }
+.expand-task svg { width: 12px; height: 12px; }
+.expand-task[aria-expanded="true"] svg { transform: rotate(90deg); }
+.subtask-count { flex-shrink: 0; color: #919191; font-size: 11px; line-height: 22px; white-space: nowrap; }
+.subtask-list { padding-left: 30px; }
+.subtask-row { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
+.subtask-row .task-check { width: 18px; height: 18px; flex-basis: 18px; margin-top: 2px; }
+.subtask-form { display: flex; gap: 5px; align-items: center; padding: 4px 0 6px; }
+.subtask-input { flex: 1; width: 0; height: 28px; border-radius: 15px; padding: 0 10px; font-size: 12px; }
+.subtask-add { display: inline-flex; align-items: center; gap: 6px; padding: 5px 0; border: 0; background: none; color: #919191; font-size: 11px; }
+.subtask-add:hover { color: #222; }
+.subtask-add svg { width: 12px; height: 12px; }
 svg { width: 13px; height: 13px; display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .delete-task:hover { color: #b54236; background: #fff0ef; }
 footer { flex-shrink: 0; padding-top: 9px; }
@@ -73,6 +88,7 @@ input:focus { border-color: #aaa; }
 .app-menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; border-radius: 5px; padding: 7px 9px; background: none; text-align: left; font-size: 12px; color: #333; }
 .app-menu button:hover, .app-menu button:focus-visible { background: #f3f3f3; }
 .app-menu button span { color: #999; }
+.task-context-menu { position: fixed; top: 0; right: auto; left: 0; z-index: 6; width: 154px; max-height: calc(100vh - 20px); }
 .menu-divider { height: 1px; background: #efefef; margin: 3px 5px; }
 dialog { color: #222; width: calc(100% - 42px); max-width: 390px; max-height: calc(100% - 36px); overflow: auto; padding: 20px; border: 1px solid #dedede; border-radius: 13px; box-shadow: 0 8px 32px #0000001c; }
 dialog::backdrop { background: #ffffffb0; }

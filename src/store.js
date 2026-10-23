@@ -30,14 +30,26 @@ function validate(value) {
     ids.add(raw);
     return raw;
   }
+  function task(raw, child = false) {
+    if (!raw || typeof raw.completed !== 'boolean') throw new Error('任务完成状态格式不正确。');
+    if (child && Object.hasOwn(raw, 'subtasks')) throw new Error('子任务只支持一层，不能嵌套。');
+    const item = { id: id(raw.id), text: text(raw.text, 2000, '任务内容'), completed: raw.completed };
+    if (!child && Object.hasOwn(raw, 'subtasks')) {
+      if (!Array.isArray(raw.subtasks)) throw new Error('子任务列表格式不正确。');
+      if (raw.expanded !== undefined && typeof raw.expanded !== 'boolean') throw new Error('展开状态格式不正确。');
+      if (raw.subtasks.length) {
+        item.subtasks = raw.subtasks.map(value => task(value, true));
+        item.completed = item.subtasks.every(value => value.completed);
+        item.expanded = raw.expanded !== false;
+      }
+    }
+    return item;
+  }
   const projects = value.projects.map(p => {
     if (!p || !Array.isArray(p.tasks)) throw new Error('项目中的任务列表格式不正确。');
     return {
       id: id(p.id), name: text(p.name, 80, '项目名称'),
-      tasks: p.tasks.map(t => {
-        if (!t || typeof t.completed !== 'boolean') throw new Error('任务完成状态格式不正确。');
-        return { id: id(t.id), text: text(t.text, 2000, '任务内容'), completed: t.completed };
-      })
+      tasks: p.tasks.map(value => task(value))
     };
   });
   const rawWindow = value.window || {};
@@ -69,7 +81,15 @@ function atomicWrite(file, data, backup = true) {
     fs.closeSync(descriptor);
     descriptor = undefined;
     if (backup && fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
-    fs.renameSync(temporary, file);
+    // Windows can briefly deny replacement while another process holds a file
+    // handle. Retry only transient errors; never unlink the valid destination.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.renameSync(temporary, file); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 3) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (attempt + 1));
+      }
+    }
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
     // Do not mask the write error (e.g. a directory occupying the temp path).
@@ -137,6 +157,8 @@ class Store {
   snapshot() { return structuredClone(this.state); }
 
   commit(next) {
+    // Keep derived parent state identical for commands, imports and disk writes.
+    next = validate(next);
     const serialized = JSON.stringify(next, null, 2);
     if (Buffer.byteLength(serialized) > MAX_BACKUP_BYTES) throw new Error('本地数据已达到 20 MB 上限，请先导出备份。');
     atomicWrite(this.file, next);
@@ -161,6 +183,11 @@ class Store {
       const task = needProject().tasks.find(t => t.id === command.taskId);
       if (!task) throw new Error('任务不存在。');
       return task;
+    };
+    const needSubtask = () => {
+      const subtask = needTask().subtasks?.find(item => item.id === command.subtaskId);
+      if (!subtask) throw new Error('子任务不存在。');
+      return subtask;
     };
     switch (command.type) {
       case 'project:add': {
@@ -191,7 +218,32 @@ class Store {
       case 'task:add': needProject().tasks.push({ id: randomUUID(), text: text(command.text, 2000, '任务内容'), completed: false }); break;
       case 'task:edit': needTask().text = text(command.text, 2000, '任务内容'); break;
       // Completion never removes, filters, or sorts a task.
-      case 'task:toggle': { const task = needTask(); task.completed = !task.completed; break; }
+      case 'task:toggle': {
+        const task = needTask();
+        if (task.subtasks?.length) throw new Error('父任务由子任务自动完成，不能手动勾选。');
+        task.completed = !task.completed; break;
+      }
+      case 'task:expand': {
+        const task = needTask();
+        if (!task.subtasks?.length || typeof command.expanded !== 'boolean') throw new Error('展开操作无效。');
+        task.expanded = command.expanded; break;
+      }
+      case 'subtask:add': {
+        const task = needTask();
+        const item = { id: randomUUID(), text: text(command.text, 2000, '子任务内容'), completed: false };
+        (task.subtasks ||= []).push(item); task.expanded = true; break;
+      }
+      case 'subtask:edit': needSubtask().text = text(command.text, 2000, '子任务内容'); break;
+      case 'subtask:toggle': { const item = needSubtask(); item.completed = !item.completed; break; }
+      case 'subtask:delete': {
+        needSubtask();
+        const task = needTask();
+        task.subtasks = task.subtasks.filter(item => item.id !== command.subtaskId);
+        // With no children, retain the parent's completion immediately before
+        // deletion and restore ordinary manual completion.
+        if (!task.subtasks.length) { delete task.subtasks; delete task.expanded; }
+        break;
+      }
       case 'task:delete': { needTask(); project.tasks = project.tasks.filter(t => t.id !== command.taskId); break; }
       default: throw new Error('不支持的操作。');
     }
