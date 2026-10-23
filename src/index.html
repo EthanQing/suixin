@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <title>我的待办清单</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="renderer.js" defer></script>
+</head>
+<body>
+  <div class="widget">
+    <header class="titlebar">
+      <h1>我的待办清单</h1>
+      <span id="pin-indicator" class="pin-indicator" title="窗口已置顶" hidden>置顶</span>
+      <div class="window-controls">
+        <button id="menu-button" class="icon-button" aria-label="更多选项" aria-haspopup="menu" aria-expanded="false" title="更多选项">···</button>
+        <button id="minimize-button" class="icon-button" aria-label="最小化" title="最小化">−</button>
+        <button id="close-button" class="icon-button close-button" aria-label="隐藏到托盘" title="隐藏到系统托盘">×</button>
+      </div>
+    </header>
+
+    <nav id="project-tabs" class="project-tabs" aria-label="项目切换"></nav>
+
+    <main>
+      <div class="section-heading">
+        <h2 id="project-heading">正在打开清单…</h2>
+        <button id="new-project-button" class="icon-button new-project" aria-label="新建项目" title="新建项目">+</button>
+      </div>
+      <div id="task-scroll" class="task-scroll">
+        <ul id="task-list" aria-label="待办事项"></ul>
+        <div id="empty-state" class="empty-state" hidden>
+          <span class="empty-circle" aria-hidden="true">✓</span>
+          <p id="empty-title">这个项目，留给你的下一个想法。</p>
+          <p id="empty-hint">在下方记一笔，什么时候想做就做。</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <form id="add-form" autocomplete="off">
+        <input id="task-input" aria-label="新待办内容" maxlength="2000" placeholder="添加待办，不用设置日期..." required>
+        <button class="add-button" type="submit" aria-label="添加待办" title="添加待办（Enter）">+</button>
+      </form>
+      <p class="footnote">随心记录，完成后打勾保留。</p>
+      <div id="status" class="status" role="status" hidden>
+        <span id="status-text"></span>
+        <button id="dismiss-status" aria-label="关闭提示">×</button>
+      </div>
+    </footer>
+
+    <div id="app-menu" class="app-menu" role="menu" aria-label="更多选项" hidden>
+      <button id="pin-button" role="menuitemcheckbox" aria-checked="false">始终置顶<span id="pin-check" aria-hidden="true"></span></button>
+      <div class="menu-divider" role="separator"></div>
+      <button id="menu-new-project" role="menuitem">新建项目<span aria-hidden="true">+</span></button>
+      <button id="manage-projects" role="menuitem">管理项目<span aria-hidden="true">›</span></button>
+      <div class="menu-divider" role="separator"></div>
+      <button id="export-button" role="menuitem">导出 JSON 备份</button>
+      <button id="import-button" role="menuitem">导入 JSON 备份</button>
+      <div class="menu-divider" role="separator"></div>
+      <button id="quit-button" role="menuitem">退出程序</button>
+    </div>
+
+    <dialog id="editor-dialog" aria-labelledby="editor-title">
+      <form id="editor-form" autocomplete="off">
+        <h3 id="editor-title">新建项目</h3>
+        <label id="editor-label" for="editor-input">项目名称</label>
+        <input id="editor-input" required maxlength="80">
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" id="editor-cancel">取消</button>
+          <button type="submit" class="primary-button" id="editor-save">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <h3 id="confirm-title">删除待办？</h3>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="confirm-cancel" autofocus>取消</button>
+        <button class="danger-button" id="confirm-accept">确认删除</button>
+      </div>
+    </dialog>
+
+    <dialog id="projects-dialog" aria-labelledby="projects-title">
+      <div class="dialog-heading">
+        <h3 id="projects-title">管理项目</h3>
+        <button class="icon-button" id="projects-close" aria-label="关闭项目管理">×</button>
+      </div>
+      <p class="dialog-description">用箭头调整标签顺序。</p>
+      <ul id="projects-list" class="projects-list"></ul>
+      <button id="projects-add" class="primary-button wide-button">+ 新建项目</button>
+    </dialog>
+  </div>
+</body>
+</html>
