@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('todo', Object.freeze({
   minimize: () => invoke('window:minimize'),
   hide: () => invoke('window:hide'),
   quit: () => invoke('app:quit'),
+  openDataDirectory: () => invoke('app:open-data-directory'),
   exportBackup: () => invoke('backup:export'),
   chooseBackup: () => invoke('backup:choose'),
   applyBackup: token => invoke('backup:apply', token),

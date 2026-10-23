@@ -20,12 +20,14 @@
       </div>
     </header>
 
-    <nav id="project-tabs" class="project-tabs" aria-label="项目切换"></nav>
+    <div class="project-bar">
+      <nav id="project-tabs" class="project-tabs" aria-label="项目切换"></nav>
+      <button id="new-project-button" type="button" class="icon-button new-project" aria-label="新建项目" title="新建项目">+</button>
+    </div>
 
     <main>
       <div class="section-heading">
         <h2 id="project-heading">正在打开清单…</h2>
-        <button id="new-project-button" class="icon-button new-project" aria-label="新建项目" title="新建项目">+</button>
       </div>
       <div id="task-scroll" class="task-scroll">
         <ul id="task-list" aria-label="待办事项"></ul>
@@ -39,8 +41,8 @@
 
     <footer>
       <form id="add-form" autocomplete="off">
-        <input id="task-input" aria-label="新待办内容" maxlength="2000" placeholder="添加待办，不用设置日期..." required>
-        <button class="add-button" type="submit" aria-label="添加待办" title="添加待办（Enter）">+</button>
+        <input id="task-input" aria-label="新待办内容" maxlength="2000" placeholder="添加待办，不用设置日期..." required disabled>
+        <button class="add-button" type="submit" aria-label="添加待办" title="添加待办（Enter）" disabled>+</button>
       </form>
       <p class="footnote">随心记录，完成后打勾保留。</p>
       <div id="status" class="status" role="status" hidden>
@@ -57,6 +59,7 @@
       <div class="menu-divider" role="separator"></div>
       <button id="export-button" role="menuitem">导出 JSON 备份</button>
       <button id="import-button" role="menuitem">导入 JSON 备份</button>
+      <button id="data-directory-button" role="menuitem">打开数据目录</button>
       <div class="menu-divider" role="separator"></div>
       <button id="quit-button" role="menuitem">退出程序</button>
     </div>

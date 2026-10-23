@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "80ffb565-b54e-41de-ba90-4051424394ff",
+      "name": "训练平台",
+      "tasks": [
+        {
+          "id": "54201b63-1f50-4261-bc73-e57b0d550773",
+          "text": "完善模型选择：名称、项目、检索",
+          "completed": false
+        },
+        {
+          "id": "4ca772f0-299a-4f2f-a9d1-f10354b51b9c",
+          "text": "增加训练任务命名、改名入口",
+          "completed": false
+        },
+        {
+          "id": "8c2bd2ac-6069-4b6d-adcd-de761ab86877",
+          "text": "指标测试中文化",
+          "completed": false
+        },
+        {
+          "id": "6c6359f7-a4a3-4d84-95fb-fc90dbb6c832",
+          "text": "排查推理完成后无结果",
+          "completed": false
+        },
+        {
+          "id": "89b617e6-c323-484d-8de3-5875e5e29e9c",
+          "text": "支持离开页面后继续上传",
+          "completed": false
+        },
+        {
+          "id": "2dd8cbf4-e910-4326-8daa-09a908161f36",
+          "text": "排查三卡机器单卡训练长期排队",
+          "completed": false
+        },
+        {
+          "id": "98505feb-a4bb-42eb-8446-f49f593a5520",
+          "text": "说明划分规则并补充类别覆盖保障",
+          "completed": false
+        },
+        {
+          "id": "c762ce0f-a593-418e-b030-126797f53479",
+          "text": "排查监控未检测到 GPU",
+          "completed": false
+        },
+        {
+          "id": "c96edec2-d20d-4d1b-a9c1-09a7374d0034",
+          "text": "简化只保留指定类别的标签映射",
+          "completed": false
+        },
+        {
+          "id": "44d770e0-1748-48d7-9d50-70a301dfa09c",
+          "text": "多模型统一指标测试与对比",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "window": {
+    "width": 420,
+    "height": 380,
+    "alwaysOnTop": false
+  },
+  "selectedProjectId": "80ffb565-b54e-41de-ba90-4051424394ff"
+}

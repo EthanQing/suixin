@@ -10,6 +10,8 @@
     "start": "electron .",
     "test": "node --test tests/store.test.js",
     "test:e2e": "playwright test",
+    "test:packaged": "node tests/packaged-smoke.js",
+    "test:nsis": "node tests/packaged-smoke.js --nsis",
     "check": "node --check src/main.js && node --check src/store.js && node --check src/preload.js && node --check src/renderer.js",
     "build:win": "electron-builder --win nsis portable --x64",
     "build:dir": "electron-builder --win --dir --x64"

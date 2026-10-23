@@ -6,13 +6,88 @@ const os = require('node:os');
 const path = require('node:path');
 const { Store, validate, readBackup, atomicWrite, MAX_BACKUP_BYTES } = require('../src/store');
 
-function fixture(t) {
+function fixture(t, seed = true) {
   const root = process.env.SUIXIN_TEST_ROOT || os.tmpdir();
   fs.mkdirSync(root, { recursive: true });
   const directory = fs.mkdtempSync(path.join(root, 'suixin-unit-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  return { directory, store: new Store(directory) };
+  const store = new Store(directory);
+  if (seed) {
+    for (const [name, tasks] of [
+      ['光疗舱', ['整理所需数据', '优化模型', '检查测试结果']],
+      ['盐雾', ['编写 APP 用户手册', '整理功能需求']],
+      ['训练平台', ['完善界面', '测试功能']], ['个人事务', []]
+    ]) {
+      store.dispatch({ type: 'project:add', name });
+      for (const text of tasks) store.dispatch({ type: 'task:add', projectId: store.state.selectedProjectId, text });
+    }
+    store.dispatch({ type: 'project:select', projectId: store.state.projects[0].id });
+  }
+  return { directory, store };
 }
+
+test('首次启动为空白；用户删除所有项目后重启仍为空白', t => {
+  const { directory, store } = fixture(t, false);
+  assert.deepEqual(store.state.projects, []);
+  assert.equal(store.state.selectedProjectId, null);
+  store.dispatch({ type: 'project:add', name: '主动删除' });
+  store.dispatch({ type: 'project:delete', projectId: store.state.selectedProjectId });
+  assert.deepEqual(new Store(directory).snapshot(), store.snapshot());
+});
+
+test('升级读取既有存档不写文件，空存档优先于含任务的备份或旧目录', t => {
+  const { directory, store } = fixture(t);
+  const bytes = fs.readFileSync(store.file);
+  const modified = fs.statSync(store.file).mtimeMs;
+  assert.deepEqual(new Store(directory).snapshot(), store.snapshot());
+  assert.deepEqual(fs.readFileSync(store.file), bytes);
+  assert.equal(fs.statSync(store.file).mtimeMs, modified);
+  for (const p of store.snapshot().projects) store.dispatch({ type: 'project:delete', projectId: p.id });
+  assert.deepEqual(new Store(directory).state.projects, []);
+});
+
+test('主文件缺失时恢复 .bak，损坏主文件恢复也不覆盖有效备份', t => {
+  const { directory, store } = fixture(t);
+  const backupFile = `${store.file}.bak`;
+  const bytes = fs.readFileSync(backupFile);
+  const expected = readBackup(backupFile);
+  fs.unlinkSync(store.file);
+  assert.deepEqual(new Store(directory).snapshot(), expected);
+  assert.deepEqual(fs.readFileSync(backupFile), bytes);
+  fs.writeFileSync(store.file, 'broken');
+  assert.deepEqual(new Store(directory).snapshot(), expected);
+  assert.deepEqual(fs.readFileSync(backupFile), bytes);
+  assert.ok(fs.readdirSync(directory).filter(file => file.startsWith('recovery-')).length >= 2);
+});
+
+test('仅有 before-import、临时文件或旧路径存档时先确认并备份；不修改来源', t => {
+  for (const name of ['before-import.json', 'data.json.tmp', 'data.json.damaged-old', 'recovery-old.json', 'legacy/data.json']) {
+    const { directory, store } = fixture(t);
+    const source = path.join(directory, name);
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.copyFileSync(store.file, source);
+    const bytes = fs.readFileSync(source);
+    fs.unlinkSync(store.file); fs.unlinkSync(`${store.file}.bak`);
+    const legacyDirectories = [path.join(directory, 'legacy')];
+    assert.throws(() => new Store(directory, { legacyDirectories }), /尚未覆盖/);
+    assert.equal(fs.existsSync(store.file), false);
+    const restored = new Store(directory, { legacyDirectories, confirmRecovery: () => true });
+    assert.deepEqual(restored.snapshot(), store.snapshot());
+    assert.deepEqual(fs.readFileSync(source), bytes);
+    assert.ok(fs.readdirSync(directory).some(file => /^recovery-.+\.json$/.test(file)));
+    assert.match(restored.notice, /恢复/);
+  }
+});
+
+test('无有效存档时保留读取错误，不能用空默认值掩盖损坏备份', t => {
+  const { directory, store } = fixture(t, false);
+  fs.unlinkSync(store.file);
+  const source = path.join(directory, 'before-import.json');
+  fs.writeFileSync(source, 'damaged import backup');
+  assert.throws(() => new Store(directory), /尚未覆盖|原文件已保留/);
+  assert.equal(fs.existsSync(store.file), false);
+  assert.equal(fs.readFileSync(source, 'utf8'), 'damaged import backup');
+});
 
 test('完成只修改布尔值，保持全部任务、顺序、ID；重启后保留，且可取消完成', t => {
   const { directory, store } = fixture(t);
@@ -117,7 +192,7 @@ test('损坏主文件从 .bak 恢复并保留损坏原件；双重损坏不会�
   assert.match(recovered.notice, /恢复/);
   assert.ok(fs.readdirSync(directory).some(file => file.includes('.damaged-')));
   fs.writeFileSync(store.file, 'broken-one'); fs.writeFileSync(`${store.file}.bak`, 'broken-two');
-  assert.throws(() => new Store(directory), /原文件已保留/);
+  assert.throws(() => new Store(directory), /尚未覆盖|原文件已保留/);
   assert.equal(fs.readFileSync(store.file, 'utf8'), 'broken-one');
 });
 

@@ -35,6 +35,27 @@ async function add(value) {
 
 function row(value) { return page.locator('.task-row').filter({ has: page.getByText(value, { exact: true }) }); }
 
+async function createProject(name) {
+  await page.locator('#new-project-button').click();
+  await page.locator('#editor-input').fill(name);
+  await page.locator('#editor-save').click();
+  await expect(page.locator('#project-heading')).toHaveText(`${name} · 待办事项`);
+}
+
+// Fixtures belong to tests, never to the application's defaults.
+async function seedProjects() {
+  for (const [name, tasks] of [
+    ['光疗舱', ['整理所需数据', '优化模型', '检查测试结果']],
+    ['盐雾', ['编写 APP 用户手册', '整理功能需求']],
+    ['训练平台', ['完善界面', '测试功能']], ['个人事务', []]
+  ]) {
+    await createProject(name);
+    for (const text of tasks) await add(text);
+  }
+  await page.getByRole('button', { name: '光疗舱', exact: true }).click();
+  await expect(page.locator('.task-row')).toHaveCount(3);
+}
+
 test.beforeEach(async () => {
   const root = process.env.SUIXIN_TEST_ROOT || os.tmpdir();
   fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(shots, { recursive: true });
@@ -51,7 +72,70 @@ test.afterEach(async () => {
   expect(captured).toEqual([]);
 });
 
+test('空白首次启动、顶部加号键盘操作及溢出固定可见；删光后重启不补数据', async () => {
+  await expect(page.locator('.project-tab')).toHaveCount(0);
+  await expect(page.locator('#empty-title')).toHaveText('还没有项目，点击顶部 + 创建第一个项目');
+  await expect(page.locator('#task-input')).toBeDisabled();
+  await expect(page.locator('#add-form button')).toBeDisabled();
+  await expect(page.locator('.section-heading button')).toHaveCount(0);
+  let plus = page.locator('.project-bar > #new-project-button');
+  await expect(plus).toHaveAttribute('title', '新建项目');
+  await expect(plus).toHaveAttribute('aria-label', '新建项目');
+  await plus.focus(); await plus.press('Enter');
+  await page.locator('#editor-input').fill('第一个项目');
+  await page.locator('#editor-save').click();
+  await expect(page.locator('#task-input')).toBeEnabled();
+  await page.locator('#task-input').fill('底部加号只添加待办');
+  await page.locator('#add-form button').click();
+  await expect(row('底部加号只添加待办')).toBeVisible();
+  await expect(page.locator('.project-tab')).toHaveCount(1);
+  await plus.focus(); await plus.press('Space');
+  await expect(page.locator('#editor-dialog')).toBeVisible();
+  await page.locator('#editor-cancel').click();
+  await page.screenshot({ path: path.join(shots, '05-project-plus.png') });
+  await more('管理项目');
+  await page.getByRole('button', { name: '删除项目 第一个项目', exact: true }).click();
+  await page.locator('#confirm-accept').click();
+  await page.locator('#projects-close').click();
+  await desktop.close(); await launch();
+  plus = page.locator('.project-bar > #new-project-button');
+  await expect(page.locator('.project-tab')).toHaveCount(0);
+  await expect(page.locator('#task-input')).toBeDisabled();
+  for (let i = 0; i < 8; i++) await createProject(`很长的测试项目名称 ${i}`);
+  await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(320, 300));
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(320);
+  const position = await plus.boundingBox();
+  expect(position.x + position.width).toBeLessThan(320);
+  expect(await page.locator('#project-tabs').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+  await page.locator('#project-tabs').evaluate(el => { el.scrollLeft = 0; });
+  expect(await plus.boundingBox()).toEqual(position);
+  await plus.click();
+  await expect(page.locator('#editor-dialog')).toBeVisible();
+});
+
+test('写盘失败显示错误且保留输入与原文件；打开数据目录使用实际路径', async () => {
+  await createProject('写入失败测试');
+  const file = path.join(directory, 'data.json');
+  const before = fs.readFileSync(file, 'utf8');
+  fs.mkdirSync(`${file}.tmp`);
+  await add('保存失败应保留');
+  await expect(page.locator('#status')).toHaveClass(/error/);
+  await expect(page.locator('#task-input')).toHaveValue('保存失败应保留');
+  await expect(page.locator('.task-row')).toHaveCount(0);
+  expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  fs.rmdirSync(`${file}.tmp`);
+  await page.locator('#add-form button').click();
+  await expect(row('保存失败应保留')).toBeVisible();
+  await desktop.evaluate(({ shell }) => { shell.openPath = async file => { globalThis.openedDirectory = file; return ''; }; });
+  await more('打开数据目录');
+  expect(await desktop.evaluate(() => globalThis.openedDirectory)).toBe(directory);
+  await desktop.evaluate(({ shell }) => { shell.openPath = async () => '测试打开失败'; });
+  await more('打开数据目录');
+  await expect(page.locator('#status-text')).toHaveText('测试打开失败');
+});
+
 test('参考图布局；完成显示对勾和删除线，保留原位，可取消并在重启后保留', async () => {
+  await seedProjects();
   await expect(page.locator('.project-tab')).toHaveText(['光疗舱', '盐雾', '训练平台', '个人事务']);
   await expect(page.locator('.task-text')).toHaveText(['整理所需数据', '优化模型', '检查测试结果']);
   await page.screenshot({ path: path.join(shots, '01-default.png') });
@@ -80,6 +164,7 @@ test('参考图布局；完成显示对勾和删除线，保留原位，可取�
 });
 
 test('创建与切换独立项目；空内容无效；连续添加不丢失；编辑不改变完成；删除必须确认', async () => {
+  await seedProjects();
   await page.getByRole('button', { name: '新建项目', exact: true }).click();
   await page.locator('#editor-input').fill('研发随记');
   await page.locator('#editor-save').click();
@@ -126,6 +211,7 @@ test('创建与切换独立项目；空内容无效；连续添加不丢失；�
 });
 
 test('项目重命名、排序与删除确认，重启后保存最后选择', async () => {
+  await seedProjects();
   await more('管理项目');
   await page.getByRole('button', { name: '重命名 光疗舱', exact: true }).click();
   await page.locator('#editor-input').fill('光疗研发');
@@ -152,6 +238,7 @@ test('项目重命名、排序与删除确认，重启后保存最后选择', as
 });
 
 test('真实窗口置顶、缩放与滚动；关闭隐藏保持进程；托盘点击与菜单处理器恢复；窗口状态重启恢复', async () => {
+  await seedProjects();
   await more('始终置顶');
   expect(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isAlwaysOnTop())).toBe(true);
   await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ x: 80, y: 90, width: 320, height: 300 }));
@@ -200,6 +287,7 @@ test('真实窗口置顶、缩放与滚动；关闭隐藏保持进程；托盘�
 });
 
 test('导出真实 JSON、导入预览与取消、确认覆盖、非法文件保护和导入前副本', async () => {
+  await seedProjects();
   await row('整理所需数据').getByRole('checkbox').check();
   const exported = path.join(directory, 'exported.json');
   // File chooser responses are stubbed. Validation, confirmation UI, disk I/O,

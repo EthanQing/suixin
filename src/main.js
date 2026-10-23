@@ -1,6 +1,7 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, protocol, net, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, protocol, net, screen, shell } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
@@ -10,9 +11,13 @@ const HOME = 'suixin://app/index.html';
 protocol.registerSchemesAsPrivileged([{ scheme: 'suixin', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 app.setName('随心待办');
 const testing = !app.isPackaged && process.env.SUIXIN_E2E === '1';
-app.setPath('userData', testing && process.env.SUIXIN_TEST_DATA
+// Explicit opt-in also isolates tests of the actual packaged/installed binary.
+const isolated = process.env.SUIXIN_E2E === '1' && !!process.env.SUIXIN_TEST_DATA;
+const dataDirectory = isolated
   ? path.resolve(process.env.SUIXIN_TEST_DATA)
-  : path.join(app.getPath('appData'), 'SuixinTodo'));
+  : path.join(app.getPath('appData'), 'SuixinTodo');
+fs.mkdirSync(dataDirectory, { recursive: true });
+app.setPath('userData', dataDirectory);
 
 let win, tray, trayMenu, store;
 let quitting = false;
@@ -46,6 +51,7 @@ function updateTrayMenu() {
   trayMenu = Menu.buildFromTemplate([
     { label: '显示窗口', click: showWindow },
     { label: '隐藏窗口', click: () => win.hide() },
+    { label: '打开数据目录', click: () => openDataDirectory().catch(error => dialog.showErrorBox('打开数据目录失败', error.message)) },
     { type: 'separator' },
     { label: '始终置顶', type: 'checkbox', checked: store.state.window.alwaysOnTop,
       click: item => { try { setPinned(item.checked); } catch (error) { dialog.showErrorBox('保存失败', error.message); updateTrayMenu(); } } },
@@ -53,6 +59,11 @@ function updateTrayMenu() {
     { label: '退出程序', click: () => app.quit() }
   ]);
   tray.setContextMenu(trayMenu);
+}
+
+async function openDataDirectory() {
+  const error = await shell.openPath(app.getPath('userData'));
+  if (error) throw new Error(error);
 }
 
 function safeBounds(saved) {
@@ -81,6 +92,7 @@ function registerIPC() {
   }
   handle('app:load', () => ({ state: store.snapshot(), notice: store.notice, dataFile: store.file }));
   handle('data:command', command => store.dispatch(command));
+  handle('app:open-data-directory', openDataDirectory);
   handle('window:pin', enabled => {
     if (typeof enabled !== 'boolean') throw new Error('置顶设置无效。');
     return setPinned(enabled);
@@ -133,7 +145,15 @@ function registerIPC() {
 }
 
 async function start() {
-  store = new Store(app.getPath('userData'));
+  store = new Store(app.getPath('userData'), {
+    legacyDirectories: isolated ? [] : ['随心待办', 'suixin-todo', 'Electron'].map(name => path.join(app.getPath('appData'), name)),
+    confirmRecovery: (file, files) => dialog.showMessageBoxSync({
+      type: 'warning', title: '发现可恢复的待办数据',
+      message: `当前数据缺失或异常。是否从以下文件恢复？\n${file}`,
+      detail: `恢复前会另存副本，保留原文件，不合并或清理旧数据。\n已发现的有效存档：\n${files.join('\n')}`,
+      buttons: ['取消并退出', '备份并恢复'], defaultId: 0, cancelId: 0
+    }) === 1
+  });
   // Only these bundled files can be served. No arbitrary paths or remote pages.
   const resources = new Map([
     ['/index.html', 'index.html'], ['/renderer.js', 'renderer.js'], ['/styles.css', 'styles.css']

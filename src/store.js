@@ -14,17 +14,7 @@ function text(value, max, label) {
 }
 
 function defaults() {
-  const examples = [
-    ['光疗舱', ['整理所需数据', '优化模型', '检查测试结果']],
-    ['盐雾', ['编写 APP 用户手册', '整理功能需求']],
-    ['训练平台', ['完善界面', '测试功能']],
-    ['个人事务', []]
-  ];
-  const projects = examples.map(([name, tasks]) => ({
-    id: randomUUID(), name,
-    tasks: tasks.map(value => ({ id: randomUUID(), text: value, completed: false }))
-  }));
-  return { version: 1, projects, selectedProjectId: projects[0].id,
+  return { version: 1, projects: [], selectedProjectId: null,
     window: { width: 420, height: 380, alwaysOnTop: false } };
 }
 
@@ -68,9 +58,9 @@ function validate(value) {
 
 // Flush the temporary file before replacing the destination. A failed write never
 // commits in-memory changes; the last valid version remains in .bak as well.
-function atomicWrite(file, data) {
+function atomicWrite(file, data, backup = true) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.tmp`;
+  const temporary = backup ? `${file}.tmp` : `${file}.restore-${randomUUID()}.tmp`;
   let descriptor;
   try {
     descriptor = fs.openSync(temporary, 'w', 0o600);
@@ -78,11 +68,12 @@ function atomicWrite(file, data) {
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
-    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    if (backup && fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
     fs.renameSync(temporary, file);
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
-    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    // Do not mask the write error (e.g. a directory occupying the temp path).
+    if (fs.existsSync(temporary) && fs.statSync(temporary).isFile()) fs.unlinkSync(temporary);
   }
 }
 
@@ -92,27 +83,55 @@ function readBackup(file) {
 }
 
 class Store {
-  constructor(directory) {
+  constructor(directory, { legacyDirectories = [], confirmRecovery = () => false } = {}) {
     this.file = path.join(directory, 'data.json');
     this.notice = '';
     fs.mkdirSync(directory, { recursive: true });
-    if (!fs.existsSync(this.file) && !fs.existsSync(`${this.file}.bak`)) {
-      this.state = defaults();
-      atomicWrite(this.file, this.state);
+    if (fs.existsSync(this.file)) {
+      try { this.state = readBackup(this.file); return; }
+      catch (error) {
+        fs.copyFileSync(this.file, `${this.file}.damaged-${randomUUID()}`, fs.constants.COPYFILE_EXCL);
+      }
+    }
+    // A valid empty primary is authoritative: never resurrect deleted projects.
+    // Check all known archives before considering a brand-new empty file.
+    const candidates = [];
+    for (const dir of [directory, ...legacyDirectories]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const name of fs.readdirSync(dir)) {
+        if (!/^(data\.json(?:\.bak|\.tmp|\.damaged-.+)?|before-import\.json(?:\.bak|\.tmp)?|recovery-.+\.json)$/.test(name)) continue;
+        const file = path.join(dir, name);
+        if (file === this.file) continue;
+        candidates.push(file);
+      }
+    }
+    const valid = [];
+    const failures = [];
+    for (const file of candidates) {
+      try { valid.push({ file, state: readBackup(file), modified: fs.statSync(file).mtimeMs }); }
+      catch (error) { failures.push(`${file}: ${error.message}`); }
+    }
+    // The rotating backup is the expected fallback. Other archives/old paths
+    // can be stale, so require an explicit recovery choice before writing.
+    valid.sort((a, b) => b.modified - a.modified);
+    const recovery = valid.find(item => item.file === `${this.file}.bak`) || valid[0];
+    if (recovery) {
+      if (recovery.file !== `${this.file}.bak` && !confirmRecovery(recovery.file, valid.map(item => item.file))) {
+        throw new Error(`发现可恢复的存档，尚未覆盖任何数据。请备份目录后重新启动并确认恢复。\n${valid.map(item => item.file).join('\n')}`);
+      }
+      const preserved = path.join(directory, `recovery-${randomUUID()}.json`);
+      fs.copyFileSync(recovery.file, preserved, fs.constants.COPYFILE_EXCL);
+      // Never rotate the damaged primary over the valid .bak.
+      atomicWrite(this.file, recovery.state, false);
+      this.state = recovery.state;
+      this.notice = `数据文件缺失或异常，已恢复：${recovery.file}\n恢复前副本：${preserved}。原有备份和损坏文件已保留。`;
       return;
     }
-    try {
-      this.state = readBackup(this.file);
-    } catch (error) {
-      // Keep damaged originals for manual recovery; never replace them with defaults.
-      if (fs.existsSync(this.file)) {
-        fs.copyFileSync(this.file, `${this.file}.damaged-${Date.now()}`);
-      }
-      try { this.state = readBackup(`${this.file}.bak`); }
-      catch { throw new Error(`数据文件无法读取，原文件已保留。请备份该目录后修复或导入有效 data.json。\n${this.file}\n${error.message}`); }
-      fs.copyFileSync(`${this.file}.bak`, this.file);
-      this.notice = '数据文件异常，已从上一次有效的本地副本恢复。损坏原文件已保留。';
+    if (fs.existsSync(this.file) || candidates.length) {
+      throw new Error(`数据文件无法读取，原文件已保留。请备份该目录后修复或导入有效 data.json。\n${this.file}\n${failures.join('\n')}`);
     }
+    this.state = defaults();
+    atomicWrite(this.file, this.state);
   }
 
   snapshot() { return structuredClone(this.state); }

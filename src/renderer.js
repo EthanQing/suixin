@@ -93,8 +93,8 @@ function render() {
   $('task-scroll').scrollTop = scroll;
   if (focusTaskId) $('task-list').querySelector(`[data-task-id="${CSS.escape(focusTaskId)}"]`)?.focus({ preventScroll: true });
   $('empty-state').hidden = !!project?.tasks.length;
-  $('empty-title').textContent = project ? '这个项目，留给你的下一个想法。' : '先给你的想法建一个项目。';
-  $('empty-hint').textContent = project ? '在下方记一笔，什么时候想做就做。' : '点击右侧 +，创建第一个项目。';
+  $('empty-title').textContent = project ? '这个项目，留给你的下一个想法。' : '还没有项目，点击顶部 + 创建第一个项目';
+  $('empty-hint').textContent = project ? '在下方记一笔，什么时候想做就做。' : '';
   $('task-input').disabled = !project;
   $('add-form').querySelector('button').disabled = !project;
   $('pin-button').setAttribute('aria-checked', String(state.window.alwaysOnTop));
@@ -244,6 +244,7 @@ $('pin-button').addEventListener('click', () => { closeMenu(); run(async () => {
 $('minimize-button').addEventListener('click', () => run(() => window.todo.minimize()));
 $('close-button').addEventListener('click', () => run(() => window.todo.hide()));
 $('quit-button').addEventListener('click', () => { closeMenu(); run(() => window.todo.quit()); });
+$('data-directory-button').addEventListener('click', () => { closeMenu(); run(() => window.todo.openDataDirectory()); });
 $('dismiss-status').addEventListener('click', () => { $('status').hidden = true; });
 $('export-button').addEventListener('click', () => {
   closeMenu(); run(async () => { const file = await window.todo.exportBackup(); if (file) notify(`备份已保存至：${file}`); });
@@ -265,5 +266,5 @@ run(async () => {
   render();
   document.querySelector('.footnote').title = `本地保存：${result.dataFile}`;
   if (result.notice) notify(result.notice, true);
-  $('task-input').focus();
+  (state.projects.length ? $('task-input') : $('new-project-button')).focus();
 });

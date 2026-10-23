@@ -28,14 +28,15 @@ h1 { font-size: 15px; font-weight: 650; margin: 0; white-space: nowrap; }
 .icon-button { display: inline-grid; place-items: center; flex-shrink: 0; background: transparent; color: #8e8e8e; border: 0; border-radius: 6px; width: 26px; height: 26px; padding: 0; font-size: 18px; }
 .icon-button:hover { background: #f1f1f1; color: #222; }
 .close-button:hover { background: #fff0ef; color: #b54236; }
-.project-tabs { display: flex; gap: 7px; flex-shrink: 0; overflow-x: auto; padding: 8px 0 16px; border-bottom: 1px solid #efefef; scrollbar-width: thin; scrollbar-color: #dedede transparent; }
+.project-bar { display: flex; align-items: flex-start; gap: 7px; flex-shrink: 0; padding-top: 8px; border-bottom: 1px solid #efefef; }
+.project-tabs { display: flex; gap: 7px; flex: 1; min-width: 0; min-height: 28px; overflow-x: auto; padding: 0 0 16px; scrollbar-width: thin; scrollbar-color: #dedede transparent; }
 .project-tab { border: 1px solid #d8d8d8; border-radius: 18px; height: 28px; padding: 0 12px; background: #fff; color: #777; white-space: nowrap; flex-shrink: 0; max-width: 210px; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .project-tab:hover { border-color: #999; color: #222; }
 .project-tab[aria-current="true"] { color: white; background: #111; border-color: #111; font-weight: 600; }
 main { display: flex; flex-direction: column; min-height: 0; flex: 1; padding-top: 15px; }
 .section-heading { display: flex; align-items: center; gap: 8px; min-height: 24px; padding-bottom: 5px; }
 h2 { font-size: 14px; font-weight: 500; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.new-project { margin-left: auto; width: 23px; height: 23px; font-size: 17px; color: #a5a5a5; }
+.new-project { width: 28px; height: 28px; font-size: 17px; color: #a5a5a5; }
 .task-scroll { min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #ddd transparent; overscroll-behavior: contain; }
 ul { padding: 0; margin: 0; list-style: none; }
 .task-row { display: flex; align-items: flex-start; gap: 9px; min-height: 37px; padding: 7px 1px 7px 2px; border-radius: 7px; }
