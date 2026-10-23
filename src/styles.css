@@ -60,7 +60,6 @@ input::placeholder { color: #999; }
 input:focus { border-color: #aaa; }
 .add-button { flex-shrink: 0; border: 0; border-radius: 18px; width: 46px; height: 32px; background: #111; color: #fff; font-size: 21px; line-height: 1; }
 .add-button:hover, .primary-button:hover { background: #333; }
-.footnote { margin: 10px 0 0; font-size: 11px; line-height: 17px; color: #929292; }
 .status { display: flex; gap: 8px; margin-top: 7px; padding: 7px 9px; border-radius: 7px; background: #f4f4f4; font-size: 11px; line-height: 17px; color: #666; overflow-wrap: anywhere; max-height: 76px; overflow: auto; }
 .status.error { background: #fff2ef; color: #a14335; }
 .status span { flex: 1; }
